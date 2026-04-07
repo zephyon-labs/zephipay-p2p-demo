@@ -1,3 +1,5 @@
+import * as readline from "node:readline";
+
 class User {
   name: string;
   balance: number;
@@ -35,14 +37,14 @@ class Transaction {
   }
 }
 
-const transactionHistory: Transaction[] = [];
-let nextTransactionId = 1;
-
 const users: Record<string, User> = {
   Matt: new User("Matt", 100),
   Jake: new User("Jake", 0),
   Alex: new User("Alex", 50),
 };
+
+const transactionHistory: Transaction[] = [];
+let nextTransactionId = 1;
 
 function logTransaction(
   sender: string,
@@ -59,6 +61,7 @@ function logTransaction(
     status,
     reason
   );
+
   transactionHistory.push(tx);
   nextTransactionId++;
 }
@@ -103,27 +106,100 @@ function sendMoneyByName(senderName: string, receiverName: string, amount: numbe
   sendMoney(sender, receiver, amount);
 }
 
-console.log("Starting balances:");
-for (const user of Object.values(users)) {
-  console.log(`${user.name}: $${user.balance}`);
+function showBalances(): void {
+  console.log("\n--- Current Balances ---");
+  for (const user of Object.values(users)) {
+    console.log(`${user.name}: $${user.balance}`);
+  }
 }
 
-console.log("\n--- Transactions ---\n");
+function showHistory(): void {
+  console.log("\n--- Transaction History ---");
 
-sendMoneyByName("Matt", "Jake", 10);
-sendMoneyByName("Jake", "Alex", 5);
-sendMoneyByName("Alex", "Matt", 20);
-sendMoneyByName("Jake", "Matt", 100);
-sendMoneyByName("Matt", "Nova", 15);
+  if (transactionHistory.length === 0) {
+    console.log("No transactions yet.");
+    return;
+  }
 
-console.log("\n--- Updated balances ---");
-for (const user of Object.values(users)) {
-  console.log(`${user.name}: $${user.balance}`);
+  for (const tx of transactionHistory) {
+    console.log(
+      `#${tx.id} | ${tx.sender} -> ${tx.receiver} | $${tx.amount} | ${tx.status} | ${tx.reason} | ${tx.timestamp}`
+    );
+  }
 }
 
-console.log("\n--- Transaction History ---");
-for (const tx of transactionHistory) {
-  console.log(
-    `#${tx.id} | ${tx.sender} -> ${tx.receiver} | $${tx.amount} | ${tx.status} | ${tx.reason} | ${tx.timestamp}`
-  );
+function listUsers(): void {
+  console.log("\nAvailable users:");
+  for (const user of Object.values(users)) {
+    console.log(`- ${user.name} ($${user.balance})`);
+  }
 }
+
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+});
+
+function ask(question: string): Promise<string> {
+  return new Promise((resolve) => {
+    rl.question(question, resolve);
+  });
+}
+
+async function handleSendMoney(): Promise<void> {
+  listUsers();
+
+  const senderName = (await ask("\nSender name: ")).trim();
+  const receiverName = (await ask("Receiver name: ")).trim();
+  const amountInput = (await ask("Amount: $")).trim();
+  const amount = Number(amountInput);
+
+  if (Number.isNaN(amount) || amount <= 0) {
+    console.log("Invalid amount. Transaction cancelled.");
+    return;
+  }
+
+  console.log("\n--- Confirm Transaction ---");
+  console.log(`From: ${senderName}`);
+  console.log(`To: ${receiverName}`);
+  console.log(`Amount: $${amount}`);
+
+  const confirm = (await ask("Confirm? (y/n): ")).trim().toLowerCase();
+
+  if (confirm !== "y") {
+    console.log("Transaction cancelled.");
+    return;
+  }
+
+  sendMoneyByName(senderName, receiverName, amount);
+}
+
+async function mainMenu(): Promise<void> {
+  console.log("\n=== ZephiPay Interactive P2P Demo ===");
+
+  while (true) {
+    console.log("\nChoose an option:");
+    console.log("1. Show balances");
+    console.log("2. Send money");
+    console.log("3. Show transaction history");
+    console.log("4. Exit");
+
+    const choice = (await ask("Enter choice (1-4): ")).trim();
+
+    if (choice === "1") {
+      showBalances();
+    } else if (choice === "2") {
+      await handleSendMoney();
+    } else if (choice === "3") {
+      showHistory();
+    } else if (choice === "4") {
+      console.log("Exiting ZephiPay demo.");
+      rl.close();
+      break;
+    } else {
+      console.log("Invalid choice. Please enter 1, 2, 3, or 4.");
+    }
+  }
+}
+
+mainMenu();

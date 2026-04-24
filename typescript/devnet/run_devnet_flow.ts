@@ -16,6 +16,26 @@ import {
 import fs from "node:fs";
 import idl from "../idl/protocol.json" with { type: "json" };
 
+const mintArg = process.argv[2];
+const recipientArg = process.argv[3];
+const amountArg = process.argv[4];
+
+if (!mintArg || !recipientArg || !amountArg) {
+  console.error(
+    "Usage: npx ts-node-esm typescript/devnet/run_devnet_flow.ts <MINT> <RECIPIENT> <AMOUNT>"
+  );
+  process.exit(1);
+}
+
+const MINT = new PublicKey(mintArg);
+const RECIPIENT = new PublicKey(recipientArg);
+const AMOUNT = Number(amountArg);
+
+if (!Number.isFinite(AMOUNT) || AMOUNT <= 0 || !Number.isInteger(AMOUNT)) {
+  console.error("Amount must be a positive integer.");
+  process.exit(1);
+}
+
 const PROGRAM_ID = new PublicKey(
   "BtP7rVw9sqN4pW5RuzZJ2c4576R5pJU9yRtjrRJ7b5bM"
 );
@@ -24,15 +44,7 @@ const TREASURY_PDA = new PublicKey(
   "CuqGCfnkHN5APYdL2UkCMYbVxXxqKrwrmWXw24WeQDbE"
 );
 
-const MINT = new PublicKey(
-  "2w2nqMemQzjwKMk3jEmtXnBqGBXGJLs8FNfb5Khb8E7J"
-);
 
-const RECIPIENT = new PublicKey(
-  "eThr4Hw8WVdhyaq7zxLwxbRWzueFvzCZWn5ojKQxfnB"
-);
-
-const AMOUNT = 111;
 
 const keypairPath = process.env.HOME + "/.config/solana/id.json";
 const secretKey = JSON.parse(fs.readFileSync(keypairPath, "utf-8"));
@@ -155,4 +167,7 @@ async function main() {
 main().catch((err) => {
   console.error("Flow failed:");
   console.error(err);
+  console.log("Mint:", MINT.toBase58());
+console.log("Recipient:", RECIPIENT.toBase58());
+console.log("Amount:", AMOUNT);
 });

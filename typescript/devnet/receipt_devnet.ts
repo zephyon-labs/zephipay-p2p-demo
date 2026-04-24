@@ -18,8 +18,6 @@ const payer = Keypair.fromSecretKey(Uint8Array.from(secretKey));
 
 const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
 
-// Usage:
-// npx ts-node-esm typescript/devnet/receipt_devnet.ts <RECEIPT_PUBKEY>
 const receiptArg = process.argv[2];
 
 if (!receiptArg) {
@@ -31,27 +29,67 @@ if (!receiptArg) {
 
 const RECEIPT = new PublicKey(receiptArg);
 
-function fmt(value: unknown): string {
-  if (value instanceof PublicKey) return value.toBase58();
+function bnLikeToDecimal(value: any): string {
   if (typeof value === "bigint") return value.toString();
 
-  if (value && typeof value === "object" && "toBase58" in value) {
-    try {
-      return (value as any).toBase58();
-    } catch {
-      return String(value);
-    }
+  if (value && typeof value === "object" && value.constructor?.name === "BN") {
+    return value.toString(10);
   }
 
   if (value && typeof value === "object" && "toString" in value) {
-    try {
-      return (value as any).toString();
-    } catch {
-      return String(value);
-    }
+    return value.toString(10);
   }
 
   return String(value);
+}
+
+function formatTimestamp(value: any): string {
+  const raw = Number(bnLikeToDecimal(value));
+  if (!Number.isFinite(raw) || raw <= 0) return `${bnLikeToDecimal(value)} (unreadable)`;
+
+  const date = new Date(raw * 1000);
+  return `${raw} (${date.toISOString()})`;
+}
+
+function labelDirection(value: any): string {
+  const n = Number(bnLikeToDecimal(value));
+  if (n === 1) return "1 = DEPOSIT";
+  if (n === 2) return "2 = WITHDRAW";
+  if (n === 3) return "3 = PAY";
+  return `${n} = UNKNOWN`;
+}
+
+function labelAssetKind(value: any): string {
+  const n = Number(bnLikeToDecimal(value));
+  if (n === 1) return "1 = SOL";
+  if (n === 2) return "2 = SPL";
+  return `${n} = UNKNOWN`;
+}
+
+function formatValue(value: any): any {
+  if (value instanceof PublicKey) return value.toBase58();
+
+  if (typeof value === "bigint") return value.toString();
+
+  if (value && typeof value === "object" && "toBase58" in value) {
+    return value.toBase58();
+  }
+
+  if (value && typeof value === "object" && value.constructor?.name === "BN") {
+    return value.toString(10);
+  }
+
+  if (Array.isArray(value)) return value.map(formatValue);
+
+  if (value && typeof value === "object") {
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = formatValue(v);
+    }
+    return out;
+  }
+
+  return value;
 }
 
 async function loadProgram(connection: Connection, walletKp: Keypair) {
@@ -88,6 +126,7 @@ async function main() {
   const programAny = program as any;
 
   const rawInfo = await connection.getAccountInfo(RECEIPT, "confirmed");
+  console.log("\n--- Account Info ---");
   console.log("Raw account info:", rawInfo ? "found" : "missing");
 
   if (!rawInfo) {
@@ -98,7 +137,6 @@ async function main() {
   console.log("Receipt exists: yes");
   console.log("Owner program:", rawInfo.owner.toBase58());
   console.log("Data length:", rawInfo.data.length);
-  console.log("Attempting Anchor decode...");
 
   let receipt: any;
   try {
@@ -110,45 +148,23 @@ async function main() {
   }
 
   console.log("\n--- Decoded Receipt ---");
-  for (const [key, value] of Object.entries(receipt)) {
-    if (value === null || value === undefined) {
-      console.log(`${key}:`, value);
-      continue;
-    }
+  console.log("user:", formatValue(receipt.user));
+  console.log("direction:", labelDirection(receipt.direction));
+  console.log("assetKind:", labelAssetKind(receipt.assetKind));
+  console.log("mint:", formatValue(receipt.mint));
+  console.log("amount:", bnLikeToDecimal(receipt.amount));
+  console.log("fee:", bnLikeToDecimal(receipt.fee));
+  console.log("preBalance:", bnLikeToDecimal(receipt.preBalance));
+  console.log("postBalance:", bnLikeToDecimal(receipt.postBalance));
+  console.log("ts:", formatTimestamp(receipt.ts));
+  console.log("txCount:", bnLikeToDecimal(receipt.txCount));
+  console.log("bump:", receipt.bump);
 
-    if (typeof value === "object" && !Array.isArray(value)) {
-      try {
-        console.log(
-          `${key}:`,
-          JSON.stringify(
-            value,
-            (_, v) => {
-              if (v && typeof v === "object" && "toBase58" in v) {
-                try {
-                  return (v as any).toBase58();
-                } catch {
-                  return v;
-                }
-              }
-              if (v && typeof v === "object" && "toString" in v) {
-                try {
-                  return (v as any).toString();
-                } catch {
-                  return v;
-                }
-              }
-              return v;
-            },
-            2
-          )
-        );
-      } catch {
-        console.log(`${key}:`, fmt(value));
-      }
-      continue;
-    }
-
-    console.log(`${key}:`, fmt(value));
+  console.log("\n--- Receipt V2 Metadata ---");
+  if (receipt.v2) {
+    console.log(JSON.stringify(formatValue(receipt.v2), null, 2));
+  } else {
+    console.log("none");
   }
 }
 
